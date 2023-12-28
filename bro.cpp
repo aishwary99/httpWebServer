@@ -1,6 +1,24 @@
 #include <iostream>
 #include <string>
+#include <map>
+#include <forward_list>
 using namespace std;
+
+// A utility class to do necessary validations
+class Validator {
+    private:
+        Validator() {}
+    public:
+        static bool isValidMIMEType(string &mimeType) {
+            return true;
+        }
+        static bool isValidPath(string &path) {
+            return true;
+        }
+        static bool isValidURLFormat(string &url) {
+            return true;
+        }
+};
 
 // Amit [The Bro Programmer]
 class Error {
@@ -16,30 +34,62 @@ public:
 class Request {};
 
 class Response {
+private:
+    string contentType;
+    forward_list<string> content;
+    unsigned long contentLength;
+
+    forward_list<string>::iterator contentIterator;
 public:
-    void setContentType(string contentType) {
-        // do nothing right now
+    Response() {
+        this->contentLength = 0;
+        this->contentIterator = this->content.before_begin();
     }
-    Response &operator<<(string content) {
+    ~Response() {
+
+    }
+    void setContentType(string contentType) {
+        // validate contentType
+        if (Validator::isValidMIMEType(contentType)) {
+            this->contentType = contentType;    
+        }
+    }
+    Response & operator<<(string content) {
+        this->contentLength += content.length();
+        this->contentIterator = this->content.insert_after(this->contentIterator, content);
         return *this;
     }
 };
 
 class Bro {
+private:
+    string staticResourcesFolder;
+    map<string, void (*)(Request &, Response &)> urlMappings;
 public:
-    void setStaticResourcesFolder(string staticResourcesFolder) {
-        // do nothing right now
+    Bro() {
+
     }
-    void get(string urlPattern, void (*callBack)(Request &, Response &)) {
-        // do nothing right now
+    ~Bro() {
+
+    }
+    void setStaticResourcesFolder(string staticResourcesFolder) {
+        if (Validator::isValidPath(staticResourcesFolder)) {
+            this->staticResourcesFolder = staticResourcesFolder;
+        } else {
+            // not yet decided
+        }
+    }
+    void get(string url, void (*callBack)(Request &, Response &)) {
+        if (Validator::isValidURLFormat(url)) {
+            this->urlMappings.insert(pair<string, void (*)(Request &, Response &)> (url, callBack));
+        }
     }
     void listen(int portNumber, void (*callBack)(Error &)) {
-        // do nothing right now
+
     }
 };
 
 // Bobby [The Web Application Developer]
-
 int main() {
     Bro bro;
     bro.setStaticResourcesFolder("whatever");
