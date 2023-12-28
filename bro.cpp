@@ -44,7 +44,6 @@ public:
     Response() {
         this->contentLength = 0;
         this->contentIterator = this->content.before_begin();
-        
     }
     ~Response() {
 
