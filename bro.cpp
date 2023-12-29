@@ -2,6 +2,9 @@
 #include <string>
 #include <map>
 #include <forward_list>
+
+#include <windows.h>
+#include <unistd.h>
 using namespace std;
 
 // A utility class to do necessary validations
@@ -22,12 +25,17 @@ class Validator {
 
 // Amit [The Bro Programmer]
 class Error {
+private:
+    string error;
 public:
+    Error(string error) {
+        this->error = error;
+    }
     bool hasError() {
-        return false;
+        return this->error.length() > 0;
     }
     string getError() {
-        return "";
+        return this->error;
     }
 };
 
@@ -85,7 +93,88 @@ public:
         }
     }
     void listen(int portNumber, void (*callBack)(Error &)) {
+        // initializing socket api for windows platform
+        WSADATA wsaData;
+        WORD word = MAKEWORD(1, 1);
+        WSAStartup(word, &wsaData);
 
+        char requestBuffer[4096];
+        int requestLength;
+
+        int serverSocketDescriptor = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (serverSocketDescriptor < 0) {
+            // failed to create socket
+            Error error("Unable to create socket");
+            WSACleanup();
+            callBack(error);
+            return; 
+        }
+
+        // creating socket structure
+        struct sockaddr_in serverSocketInformation;
+        serverSocketInformation.sin_family = AF_INET;
+        serverSocketInformation.sin_port = htons(portNumber);
+        serverSocketInformation.sin_addr.s_addr = htonl(INADDR_ANY);
+
+        // binding the socket
+        int successCode = 0;
+        successCode = bind(serverSocketDescriptor, (struct sockaddr *) &serverSocketInformation, sizeof(serverSocketInformation));
+        if (successCode < 0) {
+            // failed to bind socket on specified port
+            close(serverSocketDescriptor);
+            WSACleanup();
+            char errorMessage[101];
+            sprintf(errorMessage, "Unable to bind socket to port : %d", portNumber);
+            Error error(errorMessage);
+            callBack(error);
+            return;
+        }
+
+        // listening for the connections on socket created before
+        successCode = ::listen(serverSocketDescriptor, 10);
+        if (successCode < 0) {
+            close(serverSocketDescriptor);
+            WSACleanup();
+            Error error("Unable to accept client connections");
+            callBack(error);
+            return;
+        }
+
+        Error error("");
+        callBack(error);
+        
+        // listening from client
+        struct sockaddr_in clientSocketInformation;
+        int clientSocketInformationSize = sizeof(clientSocketInformation);
+        while (true) {
+            int clientSocketDescriptor = accept(serverSocketDescriptor, (struct sockaddr *) &clientSocketInformation, &clientSocketInformationSize);
+            if (clientSocketDescriptor < 0) {
+                // not yet decided
+            }
+
+            // extracting information about the request
+            // requestLength : how many bytes will be coming up
+            requestLength = recv(clientSocketDescriptor, requestBuffer, sizeof(requestBuffer), 0);
+            if (requestLength > 0) {
+                for (int index = 0; index < requestLength; index++) {
+                    printf("%c", requestBuffer[index]);
+                }
+
+                // creating header followed by the response body
+                const char *response = 
+                "HTTP/1.1 200 OK\r\n"
+                "Connection: close\r\n"
+                "Content-Type: text/html\r\n"
+                "Content-Length: 100\r\n\r\n"
+                "<html><head><title>Thinking Machines</title></head>"
+                "<body><h1>Thinking Machines</h1>"
+                "<h3>Cool place</h3>"
+                "</body></html>";
+
+                // sending back the response
+                send(clientSocketDescriptor, response, strlen(response), 0);
+            }
+        }
     }
 };
 
