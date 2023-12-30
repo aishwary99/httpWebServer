@@ -2,10 +2,17 @@
 #include <string.h>
 #include <map>
 #include <forward_list>
+#include <unistd.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#ifdef linux
 #include <arpa/inet.h>
 #include <sys/socket.h>
-#include <unistd.h>
+#endif
+
 using namespace std;
 
 // A utility class to do necessary validations
@@ -95,18 +102,22 @@ public:
     }
     void listen(int portNumber, void (*callBack)(Error &)) {
         // initializing socket api for windows platform
-        // WSADATA wsaData;
-        // WORD word = MAKEWORD(1, 1);
-        // WSAStartup(word, &wsaData);
+        #ifdef _WIN32
+        WSADATA wsaData;
+        WORD word = MAKEWORD(1, 1);
+        WSAStartup(word, &wsaData);
+        #endif
 
-        char requestBuffer[4096];
+        char requestBuffer[4097];
         int requestLength;
 
         int serverSocketDescriptor = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (serverSocketDescriptor < 0) {
             // failed to create socket
             Error error("Unable to create socket");
-            // WSACleanup();
+            #ifdef _WIN32
+            WSACleanup();
+            #endif
             callBack(error);
             return; 
         }
@@ -123,7 +134,9 @@ public:
         if (successCode < 0) {
             // failed to bind socket on specified port
             close(serverSocketDescriptor);
-            // WSACleanup();
+            #ifdef _WIN32
+            WSACleanup();
+            #endif
             char errorMessage[101];
             sprintf(errorMessage, "Unable to bind socket to port : %d", portNumber);
             Error error(errorMessage);
@@ -135,7 +148,9 @@ public:
         successCode = ::listen(serverSocketDescriptor, 10);
         if (successCode < 0) {
             close(serverSocketDescriptor);
-            // WSACleanup();
+            #ifdef _WIN32
+            WSACleanup();
+            #endif
             Error error("Unable to accept client connections");
             callBack(error);
             return;
@@ -146,36 +161,73 @@ public:
         
         // listening from client
         struct sockaddr_in clientSocketInformation;
+        
+        #ifdef _WIN32
+        int clientSocketInformationSize = sizeof(clientSocketInformation);
+        #endif
+
+        #ifdef linux
         socklen_t clientSocketInformationSize = sizeof(clientSocketInformation);
+        #endif
+        
         while (true) {
             int clientSocketDescriptor = accept(serverSocketDescriptor, (struct sockaddr *) &clientSocketInformation, &clientSocketInformationSize);
             if (clientSocketDescriptor < 0) {
                 // not yet decided
             }
 
-            // extracting information about the request
-            // requestLength : how many bytes will be coming up
-            requestLength = recv(clientSocketDescriptor, requestBuffer, sizeof(requestBuffer), 0);
-            if (requestLength > 0) {
-                for (int index = 0; index < requestLength; index++) {
-                    printf("%c", requestBuffer[index]);
-                }
+            forward_list<string> requestBufferDS;
+            forward_list<string>::iterator requestBufferDSIterator;
+            requestBufferDSIterator = requestBufferDS.before_begin();
 
-                // creating header followed by the response body
-                const char *response = 
-                "HTTP/1.1 200 OK\r\n"
-                "Connection: close\r\n"
-                "Content-Type: text/html\r\n"
-                "Content-Length: 100\r\n\r\n"
-                "<html><head><title>Thinking Machines</title></head>"
-                "<body><h1>Thinking Machines</h1>"
-                "<h3>Cool place</h3>"
-                "</body></html>";
+            int requestBufferDSSize = 0;
+            int requestDataCount = 0;
 
-                // sending back the response
-                send(clientSocketDescriptor, response, strlen(response), 0);
+            // collecting request contents (in bytes)
+            while (true) {
+                requestLength = recv(clientSocketDescriptor, requestBuffer, sizeof(requestBuffer) - sizeof(char), 0);
+                if (requestLength == 0) break;
+                requestBuffer[requestLength] = '\0';
+                // not optimal : as string copying will be done behind the scenes
+                requestBufferDSIterator = requestBufferDS.insert_after(requestBufferDSIterator, string(requestBuffer));
+                requestBufferDSSize++;
+                requestDataCount += requestLength;
             }
+
+            if (requestBufferDSSize > 0) {
+                char *requestData = new char[requestDataCount + 1];
+                char *requestDataPointer = requestData;
+                const char *temp;
+
+                requestBufferDSIterator = requestBufferDS.begin();
+                while (requestBufferDSIterator != requestBufferDS.end()) {
+                    temp = (*requestBufferDSIterator).c_str();
+                    while (*temp) {
+                        *requestDataPointer = *temp;
+                        requestDataPointer++;
+                        temp++;
+                    }
+                    ++requestBufferDSIterator;
+                }
+                *requestDataPointer = '\0';
+                requestBufferDS.clear();
+
+                printf("--- Request data begin ---\n");
+                printf("%s\n", requestData);
+                printf("--- Request data end ---\n");
+
+                // code to parse request goes here
+                delete [] requestData;
+            } else {
+                // case : if no data received
+            }
+
+            close(clientSocketDescriptor);
         }
+
+        #ifdef _WIN32
+        WSACleanup();
+        #endif
     }
 };
 
