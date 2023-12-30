@@ -1,9 +1,10 @@
 #include <iostream>
-#include <string>
+#include <string.h>
 #include <map>
 #include <forward_list>
 
-#include <windows.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
 #include <unistd.h>
 using namespace std;
 
@@ -94,9 +95,9 @@ public:
     }
     void listen(int portNumber, void (*callBack)(Error &)) {
         // initializing socket api for windows platform
-        WSADATA wsaData;
-        WORD word = MAKEWORD(1, 1);
-        WSAStartup(word, &wsaData);
+        // WSADATA wsaData;
+        // WORD word = MAKEWORD(1, 1);
+        // WSAStartup(word, &wsaData);
 
         char requestBuffer[4096];
         int requestLength;
@@ -105,7 +106,7 @@ public:
         if (serverSocketDescriptor < 0) {
             // failed to create socket
             Error error("Unable to create socket");
-            WSACleanup();
+            // WSACleanup();
             callBack(error);
             return; 
         }
@@ -122,7 +123,7 @@ public:
         if (successCode < 0) {
             // failed to bind socket on specified port
             close(serverSocketDescriptor);
-            WSACleanup();
+            // WSACleanup();
             char errorMessage[101];
             sprintf(errorMessage, "Unable to bind socket to port : %d", portNumber);
             Error error(errorMessage);
@@ -134,7 +135,7 @@ public:
         successCode = ::listen(serverSocketDescriptor, 10);
         if (successCode < 0) {
             close(serverSocketDescriptor);
-            WSACleanup();
+            // WSACleanup();
             Error error("Unable to accept client connections");
             callBack(error);
             return;
@@ -145,7 +146,7 @@ public:
         
         // listening from client
         struct sockaddr_in clientSocketInformation;
-        int clientSocketInformationSize = sizeof(clientSocketInformation);
+        socklen_t clientSocketInformationSize = sizeof(clientSocketInformation);
         while (true) {
             int clientSocketDescriptor = accept(serverSocketDescriptor, (struct sockaddr *) &clientSocketInformation, &clientSocketInformationSize);
             if (clientSocketDescriptor < 0) {
