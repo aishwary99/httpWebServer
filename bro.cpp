@@ -4,9 +4,13 @@
 #include <forward_list>
 #include <unistd.h>
 
+// windows libraries
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
+
+// linux libraries
 
 #ifdef linux
 #include <arpa/inet.h>
@@ -31,6 +35,57 @@ class Validator {
         }
 };
 
+// Utility class for String related operations
+class StringUtility {
+    private:
+    StringUtility() {}
+
+    public:
+    static void toLowerCase(char *input) {
+        if (input == NULL) return;
+        for (; *input; input++) {
+            if (*input >= 65 && *input <= 90) {
+                *input += 32;
+            }
+        }
+    }
+};
+
+class HttpErrorStatusUtility {
+    private:
+    HttpErrorStatusUtility() {}
+    
+    public:
+    static void sendBadRequestError(int clientSocketDescriptor) {
+        // will be done later
+    }
+    static void sendHttpVersionNotSupportedError(int clientSocketDescriptor, char *httpVersion) {
+        // will be done later        
+    }
+    static void sendNotFoundError(int clientSocketDescriptor, char *requestURI) {
+        // optimization will be done later
+        char content[1000];
+        char header[200];
+        char response[1200];
+        
+        // generating response html content
+        sprintf(content, "<!Doctype html><html lang='en'><head><meta charset='utf-8'><title>404 Error</title></head><body>Requested Resource [%s] Not Found</body>", requestURI);
+        
+        // generating response header
+        int contentLength = strlen(content);
+        sprintf(header, "HTTP/1.1 404 Not Found\r\nContent-Type:text/html\nContent-Length:%d\nConnection: close\r\n\r\n", contentLength);
+
+        strcpy(response, header);
+        strcat(response, content);
+
+        // sending response : header + payload
+        send(clientSocketDescriptor, response, strlen(response), 0);
+    }
+    static void sendMethodNotAllowedError(int clientSocketDescriptor, char *method, char *requestURI) {
+        // will be done later        
+    }
+};
+
 // Amit [The Bro Programmer]
 class Error {
 private:
@@ -47,7 +102,20 @@ public:
     }
 };
 
-class Request {};
+class Request {
+    private:
+    char *method;
+    char *requestURI;
+    char *httpVersion;
+
+    Request(char *method, char *requestURI, char *httpVersion) {
+        this->method = method;
+        this->requestURI = requestURI;
+        this->httpVersion = httpVersion;
+    }
+
+    friend class Bro;
+};
 
 class Response {
 private:
@@ -75,12 +143,54 @@ public:
         this->contentIterator = this->content.insert_after(this->contentIterator, content);
         return *this;
     }
+
+    friend class HttpResponseUtility;
 };
+
+class HttpResponseUtility {
+    private:
+    HttpResponseUtility() {}
+
+    public:
+    static void sendResponse(int clientSocketDescriptor, Response &response) {
+        char header[200];
+        int contentLength = response.contentLength;
+        
+        sprintf(header, "HTTP/1.1 200 OK\r\nContent-Type:text/html\nContent-Length:%d\nConnection: close\r\n\r\n", contentLength);
+        
+        send(clientSocketDescriptor, header, strlen(header), 0);
+        
+        auto contentIterator = response.content.begin();
+        while (contentIterator != response.content.end()) {
+            string input = *contentIterator;
+            send(clientSocketDescriptor, input.c_str(), input.length(), 0);
+            ++contentIterator;
+        }
+    }
+};
+
+// an enumerated data type for request methods
+enum __request_method__{
+    __GET__,
+    __PUT__,
+    __POST__,
+    __DELETE__,
+    __CONNECT__,
+    __TRACE__,
+    __HEAD__,
+    __OPTIONS__
+};
+
+// structure to represent url mapping
+typedef struct __url__mapping {
+    __request_method__ requestMethod;
+    void (*mappedFunction)(Request &, Response &);
+}URLMapping;
 
 class Bro {
 private:
     string staticResourcesFolder;
-    map<string, void (*)(Request &, Response &)> urlMappings;
+    map<string, URLMapping> urlMappings;
 public:
     Bro() {
 
@@ -97,7 +207,7 @@ public:
     }
     void get(string url, void (*callBack)(Request &, Response &)) {
         if (Validator::isValidURLFormat(url)) {
-            this->urlMappings.insert(pair<string, void (*)(Request &, Response &)> (url, callBack));
+            this->urlMappings.insert(pair<string, URLMapping> (url, {__GET__, callBack}));
         }
     }
     void listen(int portNumber, void (*callBack)(Error &)) {
@@ -172,56 +282,123 @@ public:
         
         while (true) {
             int clientSocketDescriptor = accept(serverSocketDescriptor, (struct sockaddr *) &clientSocketInformation, &clientSocketInformationSize);
-            if (clientSocketDescriptor < 0) {
-                // not yet decided
+            requestLength = recv(clientSocketDescriptor, requestBuffer, sizeof(requestBuffer) - sizeof(char), 0);
+
+            if (requestLength == 0 || requestLength == -1) {
+                close(clientSocketDescriptor);
+                continue;
             }
 
-            forward_list<string> requestBufferDS;
-            forward_list<string>::iterator requestBufferDSIterator;
-            requestBufferDSIterator = requestBufferDS.before_begin();
 
-            int requestBufferDSSize = 0;
-            int requestDataCount = 0;
+            int index;
+            char *method;
+            char *requestURI;
+            char *httpVersion;
 
-            // collecting request contents (in bytes)
-            while (true) {
-                requestLength = recv(clientSocketDescriptor, requestBuffer, sizeof(requestBuffer) - sizeof(char), 0);
-                if (requestLength == 0) break;
-                requestBuffer[requestLength] = '\0';
-                // not optimal : as string copying will be done behind the scenes
-                requestBufferDSIterator = requestBufferDS.insert_after(requestBufferDSIterator, string(requestBuffer));
-                requestBufferDSSize++;
-                requestDataCount += requestLength;
+            method = requestBuffer;
+            index = 0;
+            while (requestBuffer[index] && requestBuffer[index] != ' ') {
+                index++;
             }
 
-            if (requestBufferDSSize > 0) {
-                char *requestData = new char[requestDataCount + 1];
-                char *requestDataPointer = requestData;
-                const char *temp;
+            if (requestBuffer[index] == '\0') {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
 
-                requestBufferDSIterator = requestBufferDS.begin();
-                while (requestBufferDSIterator != requestBufferDS.end()) {
-                    temp = (*requestBufferDSIterator).c_str();
-                    while (*temp) {
-                        *requestDataPointer = *temp;
-                        requestDataPointer++;
-                        temp++;
-                    }
-                    ++requestBufferDSIterator;
-                }
-                *requestDataPointer = '\0';
-                requestBufferDS.clear();
+            requestBuffer[index] = '\0';
+            index++;
 
-                printf("--- Request data begin ---\n");
-                printf("%s\n", requestData);
-                printf("--- Request data end ---\n");
+            if (requestBuffer[index] == ' ' || requestBuffer[index] = '\0') {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
 
-                // code to parse request goes here
-                delete [] requestData;
+            StringUtility::toLowerCase(method);
+
+            if (!(strcmp(method, "get") ||
+                strcmp(method, "put") ||
+                strcmp(method, "post") ||
+                strcmp(method, "delete") ||
+                strcmp(method, "options") ||
+                strcmp(method, "trace") ||
+                strcmp(method, "head") ||
+                strcmp(method, "connect") ||
+                )) {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+
+            requestURI = requestBuffer + index;
+            while (requestBuffer[index] && requestBuffer[index] != ' ') index++;
+
+            if (requestBuffer[index] == '\0') {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+
+            requestBuffer[index] = '\0';
+            index++;
+
+            if (requestBuffer[index] == ' ' || requestBuffer[index] = '\0') {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+
+            httpVersion = requestBuffer + index;
+            while (requestBuffer[index] && requestBuffer[index] != '\r' && requestBuffer[index] != '\n') index++;
+
+            if (requestBuffer[index] == '\0') {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+
+            if (requestBuffer[index] == '\r' && requestBuffer[index + 1] != '\n') {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+
+            if (requestBuffer[index] == '\r') {
+                requestBuffer[index] = '\0';
+                index = index + 2;
             } else {
-                // case : if no data received
+                requestBuffer[index] = '\0';
+                index = index + 1;
             }
 
+            StringUtility::toLowerCase(httpVersion);
+            if (strcmp(httpVersion, "http/1.1") != 0) {
+                HttpErrorStatusUtility::sendHttpVersionNotSupportedError(clientSocketDescriptor, httpVersion);
+                close(clientSocketDescriptor);
+                continue;
+            }
+
+            auto urlMappingsIterator = urlMappings.find(requestURI);
+            if (urlMappingsIterator == urlMappings.end()) {
+                HttpErrorStatusUtility::sendNotFoundError(clientSocketDescriptor, requestURI);
+                close(clientSocketDescriptor);
+                continue;
+            }
+
+            URLMapping urlMapping = urlMappingsIterator->second;
+            if (urlMapping.requestMethod == __GET__ and strcmp(method, "get") != 0) {
+                HttpErrorStatusUtility::sendMethodNotAllowedError(clientSocketDescriptor, requestURI);
+                close(clientSocketDescriptor);
+                continue;
+            }
+
+            Request request(method, requestURI, httpVersion);
+            Response response;
+
+            urlMapping.mappedFunction(request, response);
+            HttpResponseUtility::sendResponse(clientSocketDescriptor, response);
             close(clientSocketDescriptor);
         }
 
