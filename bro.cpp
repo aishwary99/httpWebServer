@@ -310,7 +310,7 @@ public:
             requestBuffer[index] = '\0';
             index++;
 
-            if (requestBuffer[index] == ' ' || requestBuffer[index] = '\0') {
+            if (requestBuffer[index] == ' ' || requestBuffer[index] == '\0') {
                 HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
                 close(clientSocketDescriptor);
                 continue;
@@ -325,7 +325,7 @@ public:
                 strcmp(method, "options") ||
                 strcmp(method, "trace") ||
                 strcmp(method, "head") ||
-                strcmp(method, "connect") ||
+                strcmp(method, "connect")
                 )) {
                 HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
                 close(clientSocketDescriptor);
@@ -344,7 +344,7 @@ public:
             requestBuffer[index] = '\0';
             index++;
 
-            if (requestBuffer[index] == ' ' || requestBuffer[index] = '\0') {
+            if (requestBuffer[index] == ' ' || requestBuffer[index] == '\0') {
                 HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
                 close(clientSocketDescriptor);
                 continue;
@@ -389,7 +389,7 @@ public:
 
             URLMapping urlMapping = urlMappingsIterator->second;
             if (urlMapping.requestMethod == __GET__ and strcmp(method, "get") != 0) {
-                HttpErrorStatusUtility::sendMethodNotAllowedError(clientSocketDescriptor, requestURI);
+                HttpErrorStatusUtility::sendMethodNotAllowedError(clientSocketDescriptor, method, requestURI);
                 close(clientSocketDescriptor);
                 continue;
             }
