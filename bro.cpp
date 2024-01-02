@@ -17,7 +17,37 @@
 #include <sys/socket.h>
 #endif
 
+#include <sys/stat.h>
+
 using namespace std;
+
+// A utility class to do necessary file related operations
+class FileSystemUtility {
+    private:
+    FileSystemUtility() {}
+
+    public:
+    static bool fileExists(const char *path) {
+        struct stat s;
+        int isFileExists;
+
+        isFileExists = stat(path, &s);
+        if (isFileExists != 0) return false;
+        if (S_ISDIR(s.st_mode)) return false;
+
+        return true;
+    }
+    static bool directoryExists(const char *path) {
+        struct stat s;
+        int isFileExists;
+
+        isFileExists = stat(path, &s);
+        if (isFileExists != 0) return false;
+        if (S_ISDIR(s.st_mode)) return true;
+
+        return false;
+    }
+};
 
 // A utility class to do necessary validations
 class Validator {
@@ -28,7 +58,7 @@ class Validator {
             return true;
         }
         static bool isValidPath(string &path) {
-            return true;
+            return FileSystemUtility::directoryExists(path.c_str());
         }
         static bool isValidURLFormat(string &url) {
             return true;
@@ -202,8 +232,72 @@ public:
         if (Validator::isValidPath(staticResourcesFolder)) {
             this->staticResourcesFolder = staticResourcesFolder;
         } else {
-            // not yet decided
+            string exception = string("Invalid static resources folder path : ") + staticResourcesFolder;
+            throw exception;
         }
+    }
+    bool serveStaticResource(int clientSocketDescriptor, const char *requestURI) {
+        // if user doesn't specifies static resources folder
+        if (this->staticResourcesFolder.length() == 0) {
+            return false;
+        }
+
+        // if specified static resources folder doesn't exists
+        if (!FileSystemUtility::directoryExists(this->staticResourcesFolder.c_str())) {
+            return false;
+        }
+
+        string resourcePath = this->staticResourcesFolder + string(requestURI);
+        cout << "serveStaticResource ::: Resource Path ::: " << resourcePath << endl;
+
+        // if specified static resources folder followed by the file doesn't exists
+        if (!FileSystemUtility::fileExists(resourcePath.c_str())) {
+            return false;
+        }
+
+        // Opening the static resource file
+        FILE *file = fopen(resourcePath.c_str(), "rb");
+        if (file == NULL) {
+            // o.s is not allowing to open the file
+            return false;
+        }
+        
+        long fileSize;
+        fseek(file, 0, SEEK_END);
+        fileSize = ftell(file);
+
+        if (fileSize == 0) {
+            fclose(file);
+            return false;
+        }
+
+        rewind(file);   // to move the internal file pointer to the start of the file
+
+        // constructing & sending header for static resource as response
+        char header[200];
+        sprintf(header, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: %ld\r\nConnection: close\r\n\r\n", fileSize);
+        send(clientSocketDescriptor, header, strlen(header), 0);        
+
+        // logic to send static resource content in chunks of bytes starts here
+        int bufferSize = 4096;
+        char buffer[bufferSize];
+        int bytesLeftToRead = fileSize;
+        int bytesToRead = bufferSize;
+        
+        while (bytesLeftToRead > 0) {
+            if (bytesLeftToRead < bytesToRead) {
+                bytesToRead = bytesLeftToRead;
+                fread(buffer, bytesToRead, 1, file);
+                if (feof(file)) break;
+                send(clientSocketDescriptor, buffer, bytesToRead, 0);
+                bytesLeftToRead = bytesLeftToRead - bytesToRead;
+            }
+        }
+
+        fclose(file);
+        // logic to send static resource content in chunks of bytes ends here
+
+        return true;
     }
     void get(string url, void (*callBack)(Request &, Response &)) {
         if (Validator::isValidURLFormat(url)) {
@@ -380,9 +474,13 @@ public:
                 continue;
             }
 
+            cout << "Request arrived : (Request URI) : " << requestURI << endl;
+
             auto urlMappingsIterator = urlMappings.find(requestURI);
             if (urlMappingsIterator == urlMappings.end()) {
-                HttpErrorStatusUtility::sendNotFoundError(clientSocketDescriptor, requestURI);
+                if (!serveStaticResource(clientSocketDescriptor, requestURI)) {
+                    HttpErrorStatusUtility::sendNotFoundError(clientSocketDescriptor, requestURI);
+                }
                 close(clientSocketDescriptor);
                 continue;
             }
@@ -410,6 +508,7 @@ public:
 
 // Bobby [The Web Application Developer]
 int main() {
+    try {
     Bro bro;
     bro.setStaticResourcesFolder("whatever");
     bro.get("/", [](Request &request, Response &response) {
@@ -460,6 +559,10 @@ int main() {
         }
         cout << "Bro Http Server is ready to accept requests on port: 6060" << endl;
     });
+
+    } catch (string exception) {
+        cout << exception << endl;
+    }
 
     return 0;
 }
