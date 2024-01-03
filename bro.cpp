@@ -82,6 +82,8 @@ class ServerUtility {
             }
             // logic to parse extensions ends here
         }
+
+        fclose(file);
     }
 };
 
@@ -285,9 +287,13 @@ class Bro {
 private:
     string staticResourcesFolder;
     map<string, URLMapping> urlMappings;
+    map<string, string> mimeTypes;
 public:
     Bro() {
-
+        ServerUtility::loadMIMEType(mimeTypes);
+        if (mimeTypes.size() == 0) {
+            throw string("bro-data folder has been tampered or missing");
+        }
     }
     ~Bro() {
 
@@ -337,6 +343,20 @@ public:
 
         rewind(file);   // to move the internal file pointer to the start of the file
 
+        // fetching file mimeType & extension
+        string extension, mimeType;
+        extension = FileSystemUtility::getFileExtension(resourcePath.c_str());
+        if (extension.length() > 0) {
+            auto mimeTypesIterator = mimeTypes.find(extension);
+            if (mimeTypesIterator != mimeTypes.end()) {
+                mimeType = mimeTypesIterator->second;
+            } else {
+                mimeType = string("text/html");    
+            }
+        } else {
+            mimeType = string("text/html");
+        }
+
         // constructing & sending header for static resource as response
         char header[200];
         sprintf(header, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: %ld\r\nConnection: close\r\n\r\n", fileSize);
@@ -366,6 +386,11 @@ public:
     void get(string url, void (*callBack)(Request &, Response &)) {
         if (Validator::isValidURLFormat(url)) {
             this->urlMappings.insert(pair<string, URLMapping> (url, {__GET__, callBack}));
+        }
+    }
+    void post(string url, void (*callBack)(Request &, Response &)) {
+        if (Validator::isValidURLFormat(url)) {
+            this->urlMappings.insert(pair<string, URLMapping> (url, {__POST__, callBack}));
         }
     }
     void listen(int portNumber, void (*callBack)(Error &)) {
