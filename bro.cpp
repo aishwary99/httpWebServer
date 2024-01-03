@@ -638,7 +638,7 @@ int main() {
             </html>
         )"""";
         response.setContentType("text/html");
-        response << html;
+        response << html; 
     });
 
     bro.listen(6060, [](Error &error) {
