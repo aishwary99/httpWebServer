@@ -21,6 +21,70 @@
 
 using namespace std;
 
+// A utility class to do necessary server processing utilities
+class ServerUtility {
+    private:
+    ServerUtility() {}
+    
+    public:
+    static void loadMIMEType(map<string, string> &mimeTypesMap) {
+        FILE *file;
+        file = fopen("bro-data/mime.types", "r");
+        if (file == NULL) return;
+
+        char *mimeType;
+        char *extension;
+        char line[200];     // one line can't exceed 200 chars
+
+        while (true) {
+            /**
+            Behvaiour of fgets : it will keep on reading until it reads n-1 bytes or
+            either it reaches '\n', and whatever will be read, it will be kept
+            in the specified array.
+            - Technically : its stored at specified memory location : base address of passed array
+            */
+            fgets(line, strlen(line), file);
+            if (feof(file)) break;
+
+            if (line[0] == '#') continue;
+
+            // logic to remove \r\n from the end of line starts here
+            int index = strlen(line) - 1;
+            while (true) {
+                if (line[index] == '\r' || line[index] == '\n') {
+                    line[index] = '\0'; 
+                    index--;
+                } else break;
+            }
+            // logic to remove \r\n from the end of line ends here
+            mimeType = &line[0];
+            for (index = 0; line[index] != '\t'; index++);
+            line[index] = '\0';
+            index++;
+            
+            while (line[index] == '\t') index++;
+
+            // logic to parse extensions starts here
+            while (true) {
+                extension = &line[index];
+                while (line[index] != '\0' && line[index] != ' ') index++;
+                if (line[index] == '\0') {
+                    // add entry in mimeTypeMap and break the loop
+                    mimeTypesMap.insert(pair<string, string>(string(extension), string(mimeType)));
+                    cout << extension << " , " << mimeType << endl;
+                } else {
+                    // place \0 on index-th position, add entry & increment the value
+                    line[index] = '\0';
+                    mimeTypesMap.insert(pair<string, string>(string(extension), string(mimeType)));
+                    cout << extension << " , " << mimeType << endl;
+                    index++;
+                }
+            }
+            // logic to parse extensions ends here
+        }
+    }
+};
+
 // A utility class to do necessary file related operations
 class FileSystemUtility {
     private:
