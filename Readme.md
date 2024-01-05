@@ -15,6 +15,47 @@ C++ Compiler: Ensure that you have a C++ compiler installed on your machine. For
 #### Installation
 Clone the Repository: Clone this repository to your local machine.
 
+```
+git clone <repository-url>
+g++ -o bro_server main.cpp
+./bro_server
+```
+Access the Server: Open a web browser and navigate to http://localhost:6060 to access the default route.
+
+
+# Configuration
+#### Static Resources Folder: Set the folder path for serving static resources by calling the setStaticResourcesFolder method in the main function.
+
+```
+bro.setStaticResourcesFolder("your/static/resources/folder");
+```
+
+#### URL Mapping: Define dynamic content by using the get method in the main function. Provide a URL and a lambda function to handle the corresponding HTTP method.
+
+```
+bro.get("/", [](Request &request, Response &response) {
+    // Your response handling logic here
+});
+```
+
+# Examples
+#### Serving Static Resources
+The following example demonstrates how to serve static HTML content from the specified folder.
+
+#### cpp
+```
+bro.setStaticResourcesFolder("static_html");
+Dynamic Content Mapping
+Map dynamic content to a specific URL and handle it with a lambda function.
+```
+
+#### cpp
+```
+Copy code
+bro.get("/api/data", [](Request &request, Response &response) {
+    // Your dynamic content generation logic here
+});
+```
 
 ## Additional Notes -
 
