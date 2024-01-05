@@ -61,7 +61,6 @@ bro.get("/api/data", [](Request &request, Response &response) {
 
 ```
 Order of Server Side Sockets -
-
 1. Socket Creation
 2. Binding the Socket
 3. Listening on the specified port
