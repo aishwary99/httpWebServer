@@ -69,3 +69,4 @@ Order of Server Side Sockets -
 ```
 
 ## Upcoming Features -
+1. Adding post type request/response parsing functionality.
