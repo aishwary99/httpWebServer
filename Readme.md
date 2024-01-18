@@ -71,4 +71,3 @@ Order of Server Side Sockets -
 ## Upcoming Features -
 1. Adding post type request/response parsing functionality.
 2. Adding cookie parsers.
-3. Adding support for backend uri redirects.
